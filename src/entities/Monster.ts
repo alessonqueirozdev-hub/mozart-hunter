@@ -119,7 +119,11 @@ export class Monster {
     this.hitFlash = 0;
     this.bobT = Math.random() * Math.PI * 2;
     this.anger = 0;
-    this.hp = 1 + Math.floor(phase / 2);
+    // Curva de HP mais amigavel ate Do5; cresce mais depois.
+    const learningPressure = Math.floor(Math.max(0, phase - 2) / 3);
+    const advancedPressure = Math.floor(Math.max(0, G.unlockedNoteCount - 8) / 2);
+    this.hp = 1 + learningPressure + advancedPressure;
+    this.hp = Math.max(1, Math.min(6, this.hp));
     this.maxHp = this.hp;
     this.onScreenFrames = 0;
 

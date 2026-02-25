@@ -44,7 +44,8 @@ export class PlayerProjectile {
     this.trail.push({ x: this.x, y: this.y });
     if (this.trail.length > 24) this.trail.shift();
 
-    this.vx = this.baseVx * G.difficulty.projectileSpeed;
+    // Jogador ganha leve vantagem de velocidade para sustentar rajadas.
+    this.vx = this.baseVx * G.difficulty.projectileSpeed * 1.18;
     this.x += this.vx;
     this.y += this.vy;
 

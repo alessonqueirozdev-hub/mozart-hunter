@@ -42,6 +42,32 @@ import { browserProgressStore, formatElapsedSince } from './state/progressStore'
 const gc = (document.getElementById('gc') as HTMLCanvasElement).getContext('2d')!;
 const sc = (document.getElementById('sc') as HTMLCanvasElement).getContext('2d')!;
 
+function isMobileViewport(): boolean {
+  return window.matchMedia('(max-width: 1024px)').matches;
+}
+
+function isPortrait(): boolean {
+  return window.matchMedia('(orientation: portrait)').matches;
+}
+
+function updateLandscapeRequirement(): void {
+  const mustRotate = isMobileViewport() && isPortrait();
+  document.body.classList.toggle('require-landscape', mustRotate);
+}
+
+async function tryLockLandscape(): Promise<void> {
+  const orientationApi = screen.orientation as ScreenOrientation & {
+    lock?: (orientation: 'landscape' | 'landscape-primary' | 'landscape-secondary') => Promise<void>;
+  };
+  if (!isMobileViewport()) return;
+  if (!orientationApi?.lock) return;
+  try {
+    await orientationApi.lock('landscape');
+  } catch {
+    // Alguns navegadores bloqueiam lock fora de fullscreen ou sem gesto.
+  }
+}
+
 const BG_THEMES = [
   {
     skyTint: 'rgba(40, 20, 70, 0.12)',
@@ -109,6 +135,9 @@ function applyLevelState(levelIndex: number, announce = false): void {
   G.difficulty.spawnDelay = cfg.spawnDelay;
 
   G.timerMax = Math.max(260, 700 - cfg.id * 22);
+  if (cfg.unlockedNotes <= 8) {
+    G.timerMax = Math.max(G.timerMax, 620);
+  }
   G.timerLeft = G.timerMax;
   G.levelElapsedMs = 0;
 
@@ -127,12 +156,15 @@ function applyLevelState(levelIndex: number, announce = false): void {
 function nextNote(): void {
   const noteIdx = G.availableNoteIndices[Math.floor(Math.random() * G.availableNoteIndices.length)] ?? 0;
   G.currentNote = NOTES[noteIdx];
-  G.staffAnim = 0;
+  G.staffAnim = 1;
   G.timerLeft = G.timerMax;
 
   const display = document.getElementById('note-name-display')!;
   display.textContent = '';
   display.className = 'note-name-display';
+
+  // Render imediato da nova nota para evitar atraso visual entre disparos.
+  drawStaff(sc, 960, G.staffAnim, G.currentNote, G.clef);
 }
 
 function handleInput(idx: number): void {
@@ -177,9 +209,20 @@ function handleCorrectAnswer(idx: number): void {
 
   triggerMozartShoot();
   const tip = getMozartBatonTip();
-  G.playerProjectiles.push(
-    new PlayerProjectile(G.monster!.x, G.monster!.y, NOTES[idx].freq, tip.x, tip.y),
-  );
+  const burstCount =
+    G.unlockedNoteCount >= 12 ? 3
+    : G.unlockedNoteCount >= 9 ? 2
+    : 1;
+
+  for (let shot = 0; shot < burstCount; shot++) {
+    const offsetY = burstCount === 1 ? 0 : (shot - (burstCount - 1) / 2) * 8;
+    setTimeout(() => {
+      if (!G.running || !G.monster || G.monster.dying) return;
+      G.playerProjectiles.push(
+        new PlayerProjectile(G.monster.x, G.monster.y, NOTES[idx].freq, tip.x, tip.y + offsetY),
+      );
+    }, shot * 45);
+  }
 
   nextNote();
 }
@@ -453,21 +496,28 @@ function loop(ts: number): void {
 
   drawTorches(gc, G.torches);
 
-  if (G.running) {
+  if (G.running && !document.body.classList.contains('require-landscape')) {
     G.levelElapsedMs += dt;
     G.totalElapsedMs += dt;
 
     const cfg = getLevelConfig(G.levelIndex);
     const ramp = computeRampRatio(G.levelElapsedMs, cfg.durationMs);
-    G.difficulty.monsterSpeed = cfg.monsterSpeed * (1 + ramp * 0.85);
-    G.difficulty.projectileSpeed = cfg.projectileSpeed * (1 + ramp);
-    G.difficulty.fireRate = cfg.fireRate * (1 + ramp * 0.9);
-    G.difficulty.spawnDelay = Math.max(24, cfg.spawnDelay * (1 - ramp * 0.35));
+    const learningBand = G.unlockedNoteCount <= 8;
+    const speedRamp = learningBand ? ramp * 0.35 : ramp * 0.9;
+    const projectileRamp = learningBand ? ramp * 0.42 : ramp;
+    const fireRamp = learningBand ? ramp * 0.45 : ramp * 0.95;
+    const spawnRamp = learningBand ? ramp * 0.2 : ramp * 0.4;
+
+    G.difficulty.monsterSpeed = cfg.monsterSpeed * (1 + speedRamp);
+    G.difficulty.projectileSpeed = cfg.projectileSpeed * (1 + projectileRamp);
+    G.difficulty.fireRate = cfg.fireRate * (1 + fireRamp);
+    G.difficulty.spawnDelay = Math.max(24, cfg.spawnDelay * (1 - spawnRamp));
 
     G.staffAnim = G.staffAnim > 0 ? G.staffAnim * 0.85 : Math.min(G.staffAnim + 0.05, 1);
 
     if (G.timerRunning) {
-      G.timerLeft -= 0.8 * (1 + ramp * 0.35);
+      const timerPressure = learningBand ? 1 + ramp * 0.12 : 1 + ramp * 0.32;
+      G.timerLeft -= 0.8 * timerPressure;
       if (G.timerLeft <= 0) handleTimerExpired();
     }
 
@@ -486,7 +536,8 @@ function loop(ts: number): void {
         monsterShootSound();
         const targetTip = getMozartBatonTip();
         const laneY = targetTip.y;
-        const numProj = Math.min(3, 1 + Math.floor(G.levelIndex / 4));
+        const extraWaves = Math.max(0, G.unlockedNoteCount - 8);
+        const numProj = Math.min(3, 1 + Math.floor(extraWaves / 3));
         const shotDelay = Math.max(70, Math.floor(200 / Math.max(1, G.difficulty.fireRate)));
 
         for (let i = 0; i < numProj; i++) {
@@ -555,6 +606,7 @@ function startGame(): void {
   clearButtons();
   nextNote();
   updateHUD();
+  void tryLockLandscape();
 }
 
 window.addEventListener('beforeunload', () => {
@@ -565,6 +617,10 @@ createButtons([0, 1], handleInput);
 initInputHandlers(handleInput);
 updateHUD();
 showStartOverlay(startGame);
+updateLandscapeRequirement();
+
+window.addEventListener('resize', updateLandscapeRequirement);
+window.addEventListener('orientationchange', updateLandscapeRequirement);
 
 requestAnimationFrame(ts => {
   lastTs = ts;
