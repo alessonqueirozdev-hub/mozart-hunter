@@ -1,6 +1,5 @@
 import { NOTES, GW, GH, MOZART_X, MOZART_Y } from './constants';
 import { G, resetState, setBestScore, bestScore } from './state/gameState';
-import { bgSky, bgCastle, bgFloor, drawTorches } from './graphics/backgrounds';
 import { drawStaff } from './graphics/staff';
 import { drawMozart, getMozartBatonTip, triggerMozartShoot } from './graphics/mozart';
 import { Monster } from './entities/Monster';
@@ -68,28 +67,265 @@ async function tryLockLandscape(): Promise<void> {
   }
 }
 
-const BG_THEMES = [
-  {
-    skyTint: 'rgba(40, 20, 70, 0.12)',
-    floorTint: 'rgba(70, 30, 80, 0.1)',
-    starShift: 0,
-  },
-  {
-    skyTint: 'rgba(20, 55, 90, 0.16)',
-    floorTint: 'rgba(20, 80, 110, 0.1)',
-    starShift: 25,
-  },
-  {
-    skyTint: 'rgba(80, 25, 25, 0.14)',
-    floorTint: 'rgba(120, 40, 20, 0.09)',
-    starShift: -35,
-  },
-  {
-    skyTint: 'rgba(45, 75, 30, 0.12)',
-    floorTint: 'rgba(35, 90, 45, 0.1)',
-    starShift: 50,
-  },
-] as const;
+const DAY_CYCLE_SECONDS = 110;
+const HORIZON_Y = GH * 0.67;
+
+function smoothstep(v: number): number {
+  return v * v * (3 - 2 * v);
+}
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+type ColorTriplet = [number, number, number];
+
+function mixColor(a: ColorTriplet, b: ColorTriplet, t: number): ColorTriplet {
+  return [
+    Math.round(lerp(a[0], b[0], t)),
+    Math.round(lerp(a[1], b[1], t)),
+    Math.round(lerp(a[2], b[2], t)),
+  ];
+}
+
+function rgba(color: ColorTriplet, alpha: number): string {
+  return `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+}
+
+function drawCelestialBody(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  coreColor: string,
+  auraColor: string,
+  alpha: number,
+): void {
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const aura = ctx.createRadialGradient(x, y, 0, x, y, radius * 4);
+  aura.addColorStop(0, auraColor);
+  aura.addColorStop(0.5, auraColor);
+  aura.addColorStop(1, 'transparent');
+  ctx.fillStyle = aura;
+  ctx.fillRect(x - radius * 4, y - radius * 4, radius * 8, radius * 8);
+
+  const core = ctx.createRadialGradient(x, y, 2, x, y, radius);
+  core.addColorStop(0, '#ffffff');
+  core.addColorStop(0.35, coreColor);
+  core.addColorStop(1, 'transparent');
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawClassicalClouds(ctx: CanvasRenderingContext2D, daylight: number): void {
+  const cloudAlphaScale = 0.18 + daylight * 0.52;
+  G.clouds.forEach(c => {
+    const base = Math.min(1, c.alpha * 9 * cloudAlphaScale);
+    ctx.fillStyle = `rgba(244,246,255,${base})`;
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, c.w * 0.85, c.h * 0.72, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = `rgba(255,255,255,${base * 0.58})`;
+    ctx.beginPath();
+    ctx.ellipse(c.x - c.w * 0.15, c.y - c.h * 0.2, c.w * 0.42, c.h * 0.46, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(c.x + c.w * 0.2, c.y - c.h * 0.18, c.w * 0.38, c.h * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawMoonBody(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  alpha: number,
+  cycleT: number,
+): void {
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const aura = ctx.createRadialGradient(x, y, 0, x, y, radius * 4.2);
+  aura.addColorStop(0, 'rgba(168,196,255,0.32)');
+  aura.addColorStop(1, 'transparent');
+  ctx.fillStyle = aura;
+  ctx.fillRect(x - radius * 5, y - radius * 5, radius * 10, radius * 10);
+
+  const moon = ctx.createRadialGradient(x - radius * 0.25, y - radius * 0.35, 1, x, y, radius);
+  moon.addColorStop(0, 'rgba(246,250,255,0.98)');
+  moon.addColorStop(1, 'rgba(190,212,250,0.95)');
+  ctx.fillStyle = moon;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Crateras suaves para destacar movimento da lua.
+  ctx.fillStyle = 'rgba(130,160,210,0.28)';
+  const craters = [
+    { ox: -0.32, oy: -0.14, r: 0.15 },
+    { ox: 0.22, oy: -0.06, r: 0.11 },
+    { ox: -0.08, oy: 0.21, r: 0.13 },
+  ];
+  craters.forEach(c => {
+    ctx.beginPath();
+    ctx.arc(x + radius * c.ox, y + radius * c.oy, radius * c.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Fase lunar variando com o ciclo.
+  const phase = Math.cos(cycleT * Math.PI * 2);
+  const shadowOffset = phase * radius * 0.65;
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = 'rgba(20,26,48,0.55)';
+  ctx.beginPath();
+  ctx.arc(x + shadowOffset, y, radius * 0.98, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawBaroqueCastle(ctx: CanvasRenderingContext2D, daylight: number, night: number): void {
+  const baseY = GH * 0.68;
+  const farColor = rgba(mixColor([26, 24, 52], [94, 106, 140], daylight), 0.86 + night * 0.08);
+  const nearColor = rgba(mixColor([20, 16, 40], [70, 78, 112], daylight), 0.95);
+  const trimColor = rgba(mixColor([160, 140, 110], [236, 224, 190], daylight), 0.45);
+
+  ctx.save();
+  ctx.fillStyle = farColor;
+  const farTowers = [
+    { x: 40, w: 78, h: 110, dome: 30 },
+    { x: 164, w: 96, h: 86, dome: 18 },
+    { x: 300, w: 88, h: 118, dome: 34 },
+    { x: 426, w: 106, h: 90, dome: 22 },
+    { x: 576, w: 86, h: 114, dome: 32 },
+    { x: 702, w: 100, h: 92, dome: 22 },
+    { x: 836, w: 84, h: 104, dome: 28 },
+  ];
+  farTowers.forEach(t => {
+    ctx.fillRect(t.x, baseY - t.h, t.w, t.h);
+    ctx.beginPath();
+    ctx.moveTo(t.x + t.w * 0.2, baseY - t.h);
+    ctx.lineTo(t.x + t.w * 0.8, baseY - t.h);
+    ctx.lineTo(t.x + t.w * 0.5, baseY - t.h - t.dome);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = nearColor;
+  const bodyY = GH * 0.76;
+  ctx.fillRect(0, bodyY - 74, GW, 74);
+
+  const bastions = [
+    { x: 66, w: 138, h: 126 },
+    { x: 252, w: 176, h: 112 },
+    { x: 472, w: 188, h: 120 },
+    { x: 706, w: 168, h: 116 },
+  ];
+  bastions.forEach(b => {
+    ctx.fillRect(b.x, bodyY - b.h, b.w, b.h);
+    const cx = b.x + b.w * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - 22, bodyY - b.h);
+    ctx.lineTo(cx + 22, bodyY - b.h);
+    ctx.lineTo(cx + 22, bodyY - b.h - 62);
+    ctx.lineTo(cx, bodyY - b.h - 76);
+    ctx.lineTo(cx - 22, bodyY - b.h - 62);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  ctx.strokeStyle = trimColor;
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(0, bodyY - 74.5);
+  ctx.lineTo(GW, bodyY - 74.5);
+  ctx.stroke();
+
+  // Arcadas barrocas
+  ctx.fillStyle = rgba([12, 10, 24], 0.72);
+  for (let i = 0; i < 22; i++) {
+    const ax = 12 + i * 43;
+    const ay = bodyY;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax + 26, ay);
+    ctx.lineTo(ax + 26, ay - 22);
+    ctx.arc(ax + 13, ay - 22, 13, 0, Math.PI, true);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCobblestoneGround(ctx: CanvasRenderingContext2D, daylight: number, night: number): void {
+  const yStart = HORIZON_Y + 6;
+  const yEnd = GH;
+  const baseColor = mixColor([36, 30, 46], [142, 128, 116], daylight);
+  const edgeColor = mixColor([20, 18, 30], [96, 90, 86], daylight);
+
+  const floorGrad = ctx.createLinearGradient(0, yStart, 0, yEnd);
+  floorGrad.addColorStop(0, rgba(baseColor, 0.78 + night * 0.12));
+  floorGrad.addColorStop(1, rgba(edgeColor, 0.95));
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, yStart, GW, yEnd - yStart);
+
+  // Linhas de perspectiva do calcamento.
+  ctx.strokeStyle = rgba(mixColor([18, 16, 28], [108, 102, 94], daylight), 0.34);
+  ctx.lineWidth = 1;
+  for (let i = -12; i <= 12; i++) {
+    const xBottom = GW * 0.5 + i * 48;
+    ctx.beginPath();
+    ctx.moveTo(xBottom, GH);
+    ctx.lineTo(GW * 0.5 + i * 8, yStart);
+    ctx.stroke();
+  }
+
+  // Fileiras de paralelepipedos.
+  let y = yStart;
+  let row = 0;
+  while (y < yEnd) {
+    const t = (y - yStart) / (yEnd - yStart);
+    const rowH = 6 + t * 12;
+    const halfWidth = 70 + t * (GW * 0.52);
+    const left = GW * 0.5 - halfWidth;
+    const right = GW * 0.5 + halfWidth;
+    const cols = Math.max(8, Math.floor((right - left) / (16 + t * 24)));
+    const cellW = (right - left) / cols;
+
+    for (let c = 0; c < cols; c++) {
+      const x = left + c * cellW;
+      const seed = Math.sin((row + 1) * 91.2 + c * 37.7) * 43758.5453;
+      const noise = seed - Math.floor(seed);
+      const stoneColor = mixColor(
+        [Math.round(baseColor[0] * 0.72), Math.round(baseColor[1] * 0.72), Math.round(baseColor[2] * 0.72)],
+        [Math.round(baseColor[0] * 1.15), Math.round(baseColor[1] * 1.15), Math.round(baseColor[2] * 1.12)],
+        noise,
+      );
+      ctx.fillStyle = rgba(stoneColor, 0.52);
+      ctx.fillRect(x + 0.6, y + 0.6, Math.max(1, cellW - 1.2), Math.max(1, rowH - 1.2));
+    }
+
+    y += rowH;
+    row++;
+  }
+}
 
 const progressCache = browserProgressStore.load();
 const initialResumeLevelIndex = clampLevelIndex(progressCache?.levelIndex ?? 0);
@@ -425,28 +661,98 @@ function updateDrawLive(
 }
 
 function drawStageAtmosphere(ctx: CanvasRenderingContext2D): void {
-  const theme = BG_THEMES[G.backgroundId % BG_THEMES.length];
+  const cycleT = ((G.totalElapsedMs / 1000) % DAY_CYCLE_SECONDS) / DAY_CYCLE_SECONDS;
+  const orbitAngle = cycleT * Math.PI * 2 - Math.PI * 0.5;
+
+  // Sol sobe no amanhecer, cruza o ceu e se poe; lua faz o inverso.
+  const sunX = lerp(-GW * 0.14, GW * 1.14, cycleT);
+  const sunY = HORIZON_Y - Math.sin(orbitAngle) * GH * 0.63;
+  const sunHeight = clamp01((HORIZON_Y - sunY) / (GH * 0.62));
+  const dayLight = smoothstep(sunHeight);
+
+  const moonX = lerp(GW * 1.14, -GW * 0.14, cycleT);
+  const moonY = HORIZON_Y - Math.sin(orbitAngle + Math.PI) * GH * 0.58;
+  const moonHeight = clamp01((HORIZON_Y - moonY) / (GH * 0.58));
+  const moonLight = smoothstep(moonHeight) * (0.2 + (1 - dayLight * 0.8));
+
+  const dawn = clamp01(1 - Math.abs(cycleT - 0.02) / 0.11);
+  const dusk = clamp01(1 - Math.abs(cycleT - 0.52) / 0.12);
+  const twilight = Math.max(dawn, dusk);
+  const night = clamp01(1 - dayLight);
 
   ctx.save();
-  ctx.fillStyle = theme.skyTint;
-  ctx.fillRect(0, 0, GW, GH * 0.7);
-
-  const floorGrad = ctx.createLinearGradient(0, GH * 0.55, 0, GH);
-  floorGrad.addColorStop(0, 'transparent');
-  floorGrad.addColorStop(1, theme.floorTint);
-  ctx.fillStyle = floorGrad;
-  ctx.fillRect(0, GH * 0.45, GW, GH * 0.55);
+  const skyTop = mixColor([11, 14, 34], [116, 184, 246], dayLight);
+  const skyBottom = mixColor([34, 20, 48], [238, 203, 163], twilight * 0.7 + dayLight * 0.3);
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, GH * 0.84);
+  skyGrad.addColorStop(0, rgba(skyTop, 1));
+  skyGrad.addColorStop(1, rgba(skyBottom, 1));
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, GW, GH);
   ctx.restore();
 
+  const starVisibility = clamp01(0.04 + night * 1.08 + moonLight * 0.16 - dayLight * 0.24);
   ctx.save();
   G.stars.forEach(s => {
-    ctx.globalAlpha = (Math.sin(s.t) * 0.5 + 0.5) * s.a;
-    ctx.fillStyle = `hsl(${200 + theme.starShift + Math.sin(s.t) * 40},80%,85%)`;
+    ctx.globalAlpha = (Math.sin(s.t) * 0.5 + 0.5) * s.a * starVisibility;
+    ctx.fillStyle = `hsl(${206 + Math.sin(s.t) * 18},78%,88%)`;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.restore();
+
+  drawClassicalClouds(ctx, dayLight);
+
+  // Disco solar e lunar com orbitas opostas.
+  drawCelestialBody(
+    ctx,
+    sunX,
+    sunY,
+    34 + dayLight * 10,
+    'rgba(255,235,170,0.98)',
+    `rgba(255,188,120,${0.22 + dayLight * 0.22})`,
+    dayLight,
+  );
+  drawMoonBody(ctx, moonX, moonY, 25 + moonLight * 10, Math.min(1, moonLight + 0.14), cycleT);
+
+  // Horizonte aquece no amanhecer/entardecer.
+  if (twilight > 0.01) {
+    ctx.save();
+    const horizonGlow = ctx.createLinearGradient(0, GH * 0.37, 0, GH * 0.78);
+    horizonGlow.addColorStop(0, 'transparent');
+    horizonGlow.addColorStop(1, `rgba(255,150,95,${0.1 + twilight * 0.25})`);
+    ctx.fillStyle = horizonGlow;
+    ctx.fillRect(0, GH * 0.36, GW, GH * 0.42);
+    ctx.restore();
+  }
+
+  // Clareamento real do mundo durante o dia (sem trocar assets).
+  if (dayLight > 0.01) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = `rgba(210,235,255,${0.18 + dayLight * 0.36})`;
+    ctx.fillRect(0, 0, GW, GH);
+    ctx.restore();
+  }
+
+  // Escurecimento progressivo no por do sol e noite.
+  if (night > 0.01) {
+    ctx.save();
+    ctx.fillStyle = `rgba(5,8,20,${0.1 + night * 0.55})`;
+    ctx.fillRect(0, 0, GW, GH);
+    ctx.restore();
+  }
+
+  // Skyline classico permanente (independente de dia/noite).
+  drawBaroqueCastle(ctx, dayLight, night);
+  drawCobblestoneGround(ctx, dayLight, night);
+
+  if (night > 0.15) {
+    ctx.save();
+    ctx.fillStyle = `rgba(8,10,20,${0.1 + night * 0.14})`;
+    ctx.fillRect(0, GH * 0.62, GW, GH * 0.16);
+    ctx.restore();
+  }
 }
 
 let lastTs = 0;
@@ -456,7 +762,6 @@ function loop(ts: number): void {
   lastTs = ts;
 
   G.frame++;
-  G.bgScroll += (dt / 16.6667) * 0.35;
 
   G.stars.forEach(s => (s.t += s.ts));
   G.clouds.forEach(c => {
@@ -470,31 +775,7 @@ function loop(ts: number): void {
   gc.save();
   gc.translate(G.shake.x, G.shake.y);
 
-  gc.drawImage(bgSky, 0, 0);
-
-  gc.save();
-  gc.globalAlpha = 0.8;
-  const castleOffset = -(G.bgScroll * 0.2) % GW;
-  gc.drawImage(bgCastle, castleOffset, GH * 0.2);
-  gc.drawImage(bgCastle, castleOffset + GW, GH * 0.2);
-  gc.restore();
-
-  gc.drawImage(bgFloor, 0, 0);
-
   drawStageAtmosphere(gc);
-
-  G.clouds.forEach(c => {
-    gc.fillStyle = `rgba(180,200,240,${c.alpha})`;
-    gc.beginPath();
-    gc.ellipse(c.x, c.y, c.w, c.h, 0, 0, Math.PI * 2);
-    gc.fill();
-    gc.fillStyle = `rgba(220,230,255,${c.alpha * 0.3})`;
-    gc.beginPath();
-    gc.ellipse(c.x + c.w * 0.1, c.y - c.h * 0.2, c.w * 0.8, c.h * 0.6, 0, 0, Math.PI * 2);
-    gc.fill();
-  });
-
-  drawTorches(gc, G.torches);
 
   if (G.running && !document.body.classList.contains('require-landscape')) {
     G.levelElapsedMs += dt;
