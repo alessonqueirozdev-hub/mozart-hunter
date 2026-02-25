@@ -224,9 +224,11 @@ export class Monster {
 
     ctx.save();
     ctx.globalAlpha = 0.2;
+    // Sombra achatada ancorada no chao (sem subir para o ceu).
+    ctx.translate(cx, cy + 10);
     ctx.scale(1, 0.24);
     ctx.beginPath();
-    ctx.ellipse(cx, cy + 10, 32, 10, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 32, 10, 0, 0, Math.PI * 2);
     ctx.fillStyle = '#000000';
     ctx.fill();
     ctx.restore();
