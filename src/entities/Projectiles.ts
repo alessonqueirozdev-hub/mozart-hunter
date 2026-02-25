@@ -1,6 +1,6 @@
 import { G } from '../state/gameState';
 import { Particle } from './Particle';
-import { GH, GW } from '../constants';
+import { GW, MOZART_X, PROJECTILE_LANE_Y } from '../constants';
 
 export class PlayerProjectile {
   x: number;
@@ -21,15 +21,14 @@ export class PlayerProjectile {
    * @param originY Posição Y de origem — ponta da batuta de Mozart
    */
   constructor(tx: number, ty: number, freq: number, originX?: number, originY?: number) {
+    void tx;
+    void ty;
     // Usa a ponta da batuta como ponto de partida quando fornecida
     this.x = originX ?? 175;
     this.y = originY ?? 185;
 
-    const dx = tx - this.x;
-    const dy = ty - this.y;
-    const d = Math.sqrt(dx * dx + dy * dy) || 1;
-    this.vx = (dx / d) * 18;
-    this.vy = (dy / d) * 18;
+    this.vx = 18;
+    this.vy = 0;
 
     this.alive = true;
     this.trail = [];
@@ -114,6 +113,8 @@ export class MonsterProjectile {
   y: number;
   vx: number;
   vy: number;
+  targetX: number;
+  targetY: number;
   alive: boolean;
   trail: { x: number; y: number }[];
   age: number;
@@ -124,18 +125,15 @@ export class MonsterProjectile {
   size: number;
   rot: number;
 
-  constructor(sx: number, sy: number, type = 0) {
+  constructor(sx: number, _sy: number, type = 0, laneY = PROJECTILE_LANE_Y) {
     this.x = sx;
-    this.y = sy;
+    this.y = laneY;
+    this.targetX = MOZART_X + 15;
+    this.targetY = laneY;
 
-    const targetX = 130;
-    const targetY = GH * 0.60 - 25;
-    const dx = targetX - sx;
-    const dy = targetY - sy;
-    const d = Math.sqrt(dx * dx + dy * dy) || 1;
     const spd = 7 + type * 0.5;
-    this.vx = (dx / d) * spd;
-    this.vy = (dy / d) * spd;
+    this.vx = -spd;
+    this.vy = 0;
 
     this.alive = true;
     this.trail = [];
@@ -177,9 +175,9 @@ export class MonsterProjectile {
       );
     }
 
-    const mx = 130, my = GH * 0.60 - 20;
-    const dx = this.x - mx, dy = this.y - my;
-    if (Math.sqrt(dx * dx + dy * dy) < 38 && this.x < 180) {
+    const dx = this.x - this.targetX;
+    const dy = this.y - this.targetY;
+    if (Math.abs(dx) < Math.max(20, this.size + 8) && Math.abs(dy) < 26) {
       this.alive = false;
       return 'hit';
     }

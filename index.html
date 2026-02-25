@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎼 Mozart Hunter — Deluxe Edition</title>
+<title>Mozart Hunter - Deluxe Edition</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@400;600;700&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./src/style.css">
 </head>
@@ -13,7 +13,7 @@
     <div class="hud-section">
       <div class="hud-label">Vidas</div>
       <div class="lives-row" id="lv">
-        <span class="heart">♥</span><span class="heart">♥</span><span class="heart">♥</span><span class="heart">♥</span><span class="heart">♥</span>
+        <span class="heart active">&#9829;</span><span class="heart active">&#9829;</span><span class="heart active">&#9829;</span><span class="heart active">&#9829;</span><span class="heart active">&#9829;</span>
       </div>
     </div>
     <div class="hud-section">
@@ -21,12 +21,12 @@
       <div class="hud-value" id="wave-val">I</div>
     </div>
     <div class="hud-section main-score">
-      <div class="hud-label">Pontuação</div>
+      <div class="hud-label">Pontua&ccedil;&atilde;o</div>
       <div class="hud-value" id="score-val">0</div>
       <div id="combo-badge">COMBO x<span id="combo-num">2</span></div>
     </div>
     <div class="hud-section">
-      <div class="hud-label">Sequência</div>
+      <div class="hud-label">Sequ&ecirc;ncia</div>
       <div class="hud-value" id="streak-val">0</div>
     </div>
     <div class="hud-section">
@@ -38,7 +38,7 @@
   <div id="staff-panel" class="full-width">
     <canvas id="sc" width="960" height="148"></canvas>
     <div class="staff-indicators">
-      <div class="staff-hint" id="staff-hint">▶ Identifique a nota e pressione</div>
+      <div class="staff-hint" id="staff-hint">&#9654; Identifique a nota e pressione</div>
       <div class="note-name-display" id="note-name-display"></div>
     </div>
   </div>
@@ -46,7 +46,7 @@
   <div id="game-area">
     <canvas id="gc" width="960" height="340"></canvas>
     <div id="wave-announce">
-      <span class="wave-main" id="wave-main-text">⚔ Fase I ⚔</span>
+      <span class="wave-main" id="wave-main-text">&#9876; Fase I &#9876;</span>
       <span class="wave-sub" id="wave-sub-text">O reino desperta</span>
     </div>
     <div id="danger-vignette"></div>
@@ -66,39 +66,43 @@
 <div class="ov show" id="ov-start">
   <div class="ocard">
     <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
-    <div class="otitle">🎼 Mozart Hunter</div>
+    <div class="start-hero">
+      <img class="start-hero-mozart" src="/mozart-idle.svg" alt="Mozart">
+      <div class="otitle">Mozart<br>Hunter</div>
+    </div>
     <p class="osub">
-      Demônios da Dissonância invadem o reino!<br>
+      Dem&ocirc;nios da Disson&acirc;ncia invadem o reino!<br>
       Leia a nota na <strong>Clave de Sol</strong> e pressione<br>
-      o botão correto para que Mozart ataque!
+      o bot&atilde;o correto para que Mozart ataque!
     </p>
     <div class="legend-box">
-      <div class="legend-row"><span class="legend-icon">🎵</span><span>Identifique a nota na partitura</span></div>
-      <div class="legend-row"><span class="legend-icon">⚔️</span><span>Acerte para Mozart disparar contra o monstro</span></div>
-      <div class="legend-row"><span class="legend-icon">🔥</span><span>Monstros atiram enquanto se aproximam!</span></div>
-      <div class="legend-row"><span class="legend-icon">💀</span><span>Monstro chega ou acerta Mozart = perde vida</span></div>
-      <div class="legend-row"><span class="legend-icon">⚡</span><span>Acertos em sequência = multiplicador de pontos!</span></div>
+      <div class="legend-row"><span class="legend-icon">&#9835;</span><span>Identifique a nota na partitura</span></div>
+      <div class="legend-row"><span class="legend-icon">&#9876;</span><span>Acerte para Mozart disparar contra o monstro</span></div>
+      <div class="legend-row"><span class="legend-icon">&#128293;</span><span>Monstros atiram enquanto se aproximam!</span></div>
+      <div class="legend-row"><span class="legend-icon">&#128128;</span><span>Monstro chega ou acerta Mozart = perde vida</span></div>
+      <div class="legend-row"><span class="legend-icon">&#9889;</span><span>Acertos em sequ&ecirc;ncia = multiplicador de pontos!</span></div>
     </div>
-    <button class="obtn" id="btn-start">▶ &nbsp;INICIAR BATALHA</button>
+    <button class="obtn" id="btn-start">&#9654; &nbsp;INICIAR BATALHA</button>
   </div>
 </div>
 
 <div class="ov" id="ov-over">
   <div class="ocard">
     <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
-    <div class="otitle" id="ov-title">💀 Derrota</div>
-    <p class="osub" id="ov-sub">Os demônios tomaram o reino da harmonia...</p>
+    <div class="otitle" id="ov-title">&#128128; Derrota</div>
+    <p class="osub" id="ov-sub">Os dem&ocirc;nios tomaram o reino da harmonia...</p>
     <div class="oscore" id="ov-score">0</div>
     <div class="oscore-label">PONTOS</div>
     <div class="stats-row">
-      <div class="stat-item"><span class="stat-val" id="ov-streak">0</span><span class="stat-lbl">Sequência</span></div>
+      <div class="stat-item"><span class="stat-val" id="ov-streak">0</span><span class="stat-lbl">Sequ&ecirc;ncia</span></div>
       <div class="stat-item"><span class="stat-val" id="ov-wave">I</span><span class="stat-lbl">Fase</span></div>
       <div class="stat-item"><span class="stat-val" id="ov-best">0</span><span class="stat-lbl">Recorde</span></div>
     </div>
-    <button class="obtn" id="btn-restart">↺ &nbsp;JOGAR NOVAMENTE</button>
+    <button class="obtn" id="btn-restart">&#8634; &nbsp;JOGAR NOVAMENTE</button>
   </div>
 </div>
 
 <script type="module" src="./src/main.ts"></script>
 </body>
 </html>
+

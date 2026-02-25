@@ -8,6 +8,8 @@ export interface Note {
   key: string;
 }
 
+export type ClefType = 'treble' | 'bass' | 'alto' | 'tenor';
+
 // ─── Particle ────────────────────────────────────────────────────────────────
 
 export type ParticleType = 'circle' | 'star' | 'note' | 'ring' | 'ember';
@@ -109,6 +111,7 @@ export interface GameState {
   timerMax: number;
   timerLeft: number;
   timerRunning: boolean;
+  clef: ClefType;
   stars: Star[];
   clouds: Cloud[];
   torches: Torch[];

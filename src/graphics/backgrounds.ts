@@ -267,7 +267,7 @@ export const bgSky = (() => {
 
   // ── 6. Notas musicais constelação — espalhadas no céu ────────────────────────
   // Posições fixas (seed determinista = mesma cena sempre)
-  const notePositions = Array.from({ length: 18 }, () => ({
+  const notePositions = Array.from({ length: 6 }, () => ({
     x: rnd() * GW,
     y: rnd() * GH * 0.60,
     size: 10 + rnd() * 22,
@@ -275,21 +275,18 @@ export const bgSky = (() => {
     variant: (['quarter', 'eighth', 'sixteenth'] as const)[Math.floor(rnd() * 3)],
   }));
   notePositions.forEach(n => {
-    drawMusicalNote(ctx, n.x, n.y, n.size, n.alpha, '#d0b0ff', n.variant);
+    drawMusicalNote(ctx, n.x, n.y, n.size * 0.75, n.alpha * 0.45, '#d8d8de', n.variant);
   });
 
   // ── 7. Claves de sol e fá decorativas no céu ─────────────────────────────────
-  drawTrebleClef(ctx, GW * 0.08, GH * 0.35, 55, 0.12, 'rgba(220,180,255,0.9)');
-  drawTrebleClef(ctx, GW * 0.55, GH * 0.15, 38, 0.08, 'rgba(200,160,255,0.9)');
-  drawTrebleClef(ctx, GW * 0.35, GH * 0.55, 28, 0.06, 'rgba(190,150,255,0.9)');
-  drawBassClef(ctx, GW * 0.72, GH * 0.42, 45, 0.09, 'rgba(160,180,255,0.9)');
-  drawBassClef(ctx, GW * 0.20, GH * 0.60, 30, 0.07, 'rgba(160,180,255,0.9)');
+  drawTrebleClef(ctx, GW * 0.08, GH * 0.35, 40, 0.03, 'rgba(210,210,230,0.5)');
+  drawBassClef(ctx, GW * 0.64, GH * 0.28, 26, 0.02, 'rgba(210,210,230,0.4)');
 
   // ── 8. Lua Dourada — grande, com textura e clave de sol incandescente ─────────
   const mx = GW * 0.80, my = GH * 0.20;
 
   // Halo exterior difuso (3 camadas)
-  [200, 130, 80].forEach((r, i) => {
+  [120, 80, 50].forEach((r, i) => {
     const halo = ctx.createRadialGradient(mx, my, r * 0.4, mx, my, r);
     const alphas = [0.06, 0.12, 0.18];
     halo.addColorStop(0, `rgba(255, 200, 80, ${alphas[i]})`);
@@ -319,17 +316,17 @@ export const bgSky = (() => {
   ctx.restore();
 
   // Corpo da lua — gradiente rico de tons dourados e carmesim
-  const moonGrad = ctx.createRadialGradient(mx - 10, my - 12, 4, mx, my, 46);
+  const moonGrad = ctx.createRadialGradient(mx - 8, my - 9, 4, mx, my, 32);
   moonGrad.addColorStop(0.00, '#fff8d0');
   moonGrad.addColorStop(0.25, '#ffd878');
   moonGrad.addColorStop(0.55, '#e8901a');
   moonGrad.addColorStop(0.80, '#aa4a08');
   moonGrad.addColorStop(1.00, '#5c1a02');
-  ctx.beginPath(); ctx.arc(mx, my, 46, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(mx, my, 32, 0, Math.PI * 2);
   ctx.fillStyle = moonGrad; ctx.fill();
 
   // Borda luminosa da lua
-  ctx.beginPath(); ctx.arc(mx, my, 46, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(mx, my, 32, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(255, 220, 120, 0.5)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
@@ -356,7 +353,7 @@ export const bgSky = (() => {
   ctx.globalAlpha = 1;
 
   // Clave de sol GRANDE incandescente sobre a lua (assinatura do jogo)
-  drawTrebleClef(ctx, mx + 2, my + 10, 110, 0.55, 'rgba(255, 240, 180, 0.95)');
+  drawTrebleClef(ctx, mx + 1, my + 6, 56, 0.22, 'rgba(250, 232, 180, 0.65)');
 
   // Reflexo brilhante no topo da lua
   const shine = ctx.createRadialGradient(mx - 16, my - 18, 0, mx - 16, my - 18, 22);

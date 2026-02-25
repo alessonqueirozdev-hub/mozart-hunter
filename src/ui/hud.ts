@@ -52,7 +52,7 @@ function updateHearts(): void {
   if (G.lives === _lastLives) return;
   _lastLives = G.lives;
   el.lv.innerHTML = Array.from({ length: 5 }, (_, i) =>
-    `<span class="heart ${i < G.lives ? 'active' : 'empty'}">♥</span>`,
+    `<span class="heart ${i < G.lives ? 'active' : 'lost'}">&#9829;</span>`,
   ).join('');
 }
 

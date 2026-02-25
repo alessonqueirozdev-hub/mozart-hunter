@@ -1,4 +1,4 @@
-import { NOTES, GW, GH } from './constants';
+import { NOTES, GW, GH, MOZART_X, MOZART_Y } from './constants';
 import { G, resetState, setBestScore, bestScore } from './state/gameState';
 import { bgSky, bgCastle, bgFloor, drawTorches } from './graphics/backgrounds';
 import { drawStaff } from './graphics/staff';
@@ -13,6 +13,7 @@ import {
 } from './ui/hud';
 import { createButtons, setButtonResult, setButtonActive, clearButtons } from './ui/buttons';
 import { initInputHandlers } from './input';
+import type { ClefType } from './types';
 import {
   piano, errorSound, hitSound, comboSound,
   gameOverSound, levelUpSound, whooshSound, monsterShootSound,
@@ -22,6 +23,15 @@ import {
 
 const gc = (document.getElementById('gc') as HTMLCanvasElement).getContext('2d')!;
 const sc = (document.getElementById('sc') as HTMLCanvasElement).getContext('2d')!;
+
+function resolveInitialClef(): ClefType {
+  const raw = new URLSearchParams(window.location.search).get('clef')?.toLowerCase();
+  if (!raw) return 'treble';
+  if (raw === 'bass' || raw === 'fa') return 'bass';
+  if (raw === 'alto' || raw === 'do') return 'alto';
+  if (raw === 'tenor') return 'tenor';
+  return 'treble';
+}
 
 // ─── Note management ─────────────────────────────────────────────────────────
 
@@ -63,7 +73,7 @@ function handleCorrectAnswer(idx: number): void {
 
   const pts = 10 * (1 + G.combo);
   G.score += pts;
-  G.floats.push(new FloatText(145, GH * 0.55, `+${pts}`, '#44ee88', 24));
+  G.floats.push(new FloatText(MOZART_X + 30, MOZART_Y - 25, `+${pts}`, '#44ee88', 24));
 
   const display = document.getElementById('note-name-display')!;
   if (G.combo > 1) {
@@ -100,7 +110,7 @@ function handleWrongAnswer(idx: number, targetIdx: number): void {
   setButtonResult(idx, 'wrong');
   setTimeout(() => setButtonResult(targetIdx, 'correct'), 150);
 
-  burst(130, GH * 0.60, '#ffbbbb', 12, { spd: 5 });
+  burst(MOZART_X + 15, MOZART_Y, '#ffbbbb', 12, { spd: 5 });
   applyShake(6);
 
   setTimeout(() => {
@@ -230,7 +240,8 @@ function processHits(): void {
   }
 
   // ── Monstro chegou até Mozart ─────────────────────────────────────────────
-  if (G.monster && !G.monster.dying && G.monster.x < 180) {
+  const MONSTER_CONTACT_X = MOZART_X + 95;
+  if (G.monster && !G.monster.dying && G.monster.x <= MONSTER_CONTACT_X) {
     loseLife();
     G.monster.die();
   }
@@ -244,7 +255,7 @@ function loseLife(): void {
   G.streak = 0;
   G.combo = 0;
   errorSound();
-  mozartHitEffect(130, GH * 0.60);
+  mozartHitEffect(MOZART_X + 15, MOZART_Y);
   applyShake(10);
 
   if (G.lives <= 0) {
@@ -298,11 +309,11 @@ function updateDrawLive(
 let lastTs = 0;
 
 function loop(ts: number): void {
-  const _dt = Math.min(ts - lastTs, 50);
+  const dt = Math.min(ts - lastTs, 50);
   lastTs = ts;
 
   G.frame++;
-  G.bgScroll += 0.35;
+  G.bgScroll += (dt / 16.6667) * 0.35;
 
   G.stars.forEach(s => (s.t += s.ts));
   G.clouds.forEach(c => {
@@ -371,12 +382,15 @@ function loop(ts: number): void {
 
       if (event === 'shoot') {
         monsterShootSound();
+        const targetTip = getMozartBatonTip();
+        const laneY = targetTip.y;
         const numProj = 1 + Math.min(Math.floor(G.phase / 2), 2);
         for (let i = 0; i < numProj; i++) {
           setTimeout(() => {
-            if (G.monster) {
+            if (G.monster && !G.monster.dying) {
+              const origin = G.monster.getProjectileOrigin(laneY);
               G.monsterProjectiles.push(
-                new MonsterProjectile(G.monster.x, G.monster.y - 20, G.monster.type),
+                new MonsterProjectile(origin.x, origin.y, G.monster.type, laneY),
               );
             }
           }, i * 200);
@@ -403,11 +417,11 @@ function loop(ts: number): void {
     updateDrawLive(gc, G.floats);
 
     updateHUD();
-    drawStaff(sc, 960, G.staffAnim, G.currentNote);
+    drawStaff(sc, 960, G.staffAnim, G.currentNote, G.clef);
   }
 
   // Mozart sempre visível
-  drawMozart(gc, 115, GH * 0.60, G.monster?.dangerRatio ?? 0, G.monster?.hitFlash ?? 0, G.frame);
+  drawMozart(gc, MOZART_X, MOZART_Y, G.monster?.dangerRatio ?? 0, G.monster?.hitFlash ?? 0, G.frame);
 
   gc.restore();
   requestAnimationFrame(loop);
@@ -422,6 +436,7 @@ function startGame(): void {
   }
 
   resetState();
+  G.clef = resolveInitialClef();
   G.running = true;
   G.waitAns = false;
   G.timerRunning = false;

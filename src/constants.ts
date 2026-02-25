@@ -3,6 +3,9 @@ import type { Note } from './types';
 // Dimensions
 export const GW = 960;
 export const GH = 340;
+export const MOZART_X = 115;
+export const MOZART_Y = GH * 0.63;
+export const PROJECTILE_LANE_Y = MOZART_Y - 25;
 
 // Notes Configuration: C4 to C6 (15 white keys)
 export const NOTES: Note[] = [

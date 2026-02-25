@@ -65,6 +65,7 @@ function createInitialState(): GameState {
     timerMax: 700,
     timerLeft: 700,
     timerRunning: false,
+    clef: 'treble',
     stars: genStars(),
     clouds: genClouds(),
     torches: genTorches(),
