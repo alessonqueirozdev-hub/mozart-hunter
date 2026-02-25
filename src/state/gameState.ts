@@ -1,100 +1,95 @@
-import type { GameState } from '../types';
+import type { GameState, Star, Cloud, Torch } from '../types';
 import { GW, GH } from '../constants';
 
-function genStars() {
+// ─── Scene generators ────────────────────────────────────────────────────────
+
+function genStars(): Star[] {
   return Array.from({ length: 220 }, () => ({
     x: Math.random() * GW,
-    y: Math.random() * GH * .72,
-    r: Math.random() * 1.6 + .28,
-    a: Math.random() * .72 + .2,
+    y: Math.random() * GH * 0.72,
+    r: Math.random() * 1.6 + 0.28,
+    a: Math.random() * 0.72 + 0.2,
     t: Math.random() * Math.PI * 2,
-    ts: Math.random() * .035 + .008
+    ts: Math.random() * 0.035 + 0.008,
   }));
 }
 
-function genClouds() {
+function genClouds(): Cloud[] {
   return Array.from({ length: 7 }, (_, i) => ({
     x: i * 155 + Math.random() * 70,
     y: 12 + Math.random() * 60,
     w: 110 + Math.random() * 100,
     h: 22 + Math.random() * 20,
-    speed: .055 + Math.random() * .045,
-    alpha: .04 + Math.random() * .038
+    speed: 0.055 + Math.random() * 0.045,
+    alpha: 0.04 + Math.random() * 0.038,
   }));
 }
 
-function genTorches() {
-  const positions = [GW * .12, GW * .3, GW * .55, GW * .72, GW * .9];
+function genTorches(): Torch[] {
+  const positions = [GW * 0.12, GW * 0.3, GW * 0.55, GW * 0.72, GW * 0.9];
   return positions.map(x => ({
     x,
-    y: GH * .62,
+    y: GH * 0.62,
     flicker: Math.random() * Math.PI * 2,
-    flickerSpeed: .08 + Math.random() * .06,
-    size: 1
+    flickerSpeed: 0.08 + Math.random() * 0.06,
+    size: 1,
   }));
 }
 
-export const G: GameState = {
-  lives: 5,
-  score: 0,
-  wave: 1,
-  phase: 0,
-  combo: 0,
-  streak: 0,
-  sessionBest: 0,
-  running: false,
-  waitAns: false,
-  monster: null,
-  playerProjectiles: [],
-  monsterProjectiles: [],
-  particles: [],
-  floats: [],
-  shake: { x: 0, y: 0, pow: 0 },
-  spawnDelay: 0,
-  currentNote: null,
-  staffAnim: 0,
-  bgScroll: 0,
-  frame: 0,
-  timerMax: 700,
-  timerLeft: 700,
-  timerRunning: false,
-  stars: genStars(),
-  clouds: genClouds(),
-  torches: genTorches(),
-};
+// ─── Estado inicial como factory ─────────────────────────────────────────────
+// Usar uma factory em vez de duplicar os valores em resetState()
+// garante que adicionar um campo novo só precisa ser feito aqui.
 
-export function resetState() {
-  G.lives = 5;
-  G.score = 0;
-  G.wave = 1;
-  G.phase = 0;
-  G.combo = 0;
-  G.streak = 0;
-  G.sessionBest = 0;
-  G.running = false;
-  G.waitAns = false;
-  G.monster = null;
-  G.playerProjectiles = [];
-  G.monsterProjectiles = [];
-  G.particles = [];
-  G.floats = [];
-  G.shake = { x: 0, y: 0, pow: 0 };
-  G.spawnDelay = 0;
-  G.currentNote = null;
-  G.staffAnim = 0;
-  G.bgScroll = 0;
-  G.frame = 0;
-  G.timerMax = 700;
-  G.timerLeft = 700;
-  G.timerRunning = false;
-  G.stars = genStars();
-  G.clouds = genClouds();
-  G.torches = genTorches();
+function createInitialState(): GameState {
+  return {
+    lives: 5,
+    score: 0,
+    wave: 1,
+    phase: 0,
+    combo: 0,
+    streak: 0,
+    sessionBest: 0,
+    running: false,
+    waitAns: false,
+    monster: null,
+    playerProjectiles: [],
+    monsterProjectiles: [],
+    particles: [],
+    floats: [],
+    shake: { x: 0, y: 0, pow: 0 },
+    spawnDelay: 0,
+    currentNote: null,
+    staffAnim: 0,
+    bgScroll: 0,
+    frame: 0,
+    timerMax: 700,
+    timerLeft: 700,
+    timerRunning: false,
+    stars: genStars(),
+    clouds: genClouds(),
+    torches: genTorches(),
+  };
 }
 
-export let bestScore = parseInt(localStorage.getItem('mz_best') || '0');
+// Estado global mutável — exportado para acesso direto pelos sistemas
+export const G: GameState = createInitialState();
 
-export function setBestScore(score: number) {
+/**
+ * Restaura todo o estado para os valores iniciais.
+ * Preserva `sessionBest` antes de resetar para compará-lo depois.
+ */
+export function resetState(): void {
+  const prevSessionBest = G.sessionBest;
+  Object.assign(G, createInitialState());
+  // sessionBest sobrevive entre partidas dentro da mesma sessão
+  G.sessionBest = prevSessionBest;
+}
+
+// ─── High score persistido ────────────────────────────────────────────────────
+
+export let bestScore = parseInt(localStorage.getItem('mz_best') ?? '0', 10);
+
+export function setBestScore(score: number): void {
   bestScore = score;
-  localStorage.setItem('mz_best', bestScore.toString());
+  localStorage.setItem('mz_best', score.toString());
 }

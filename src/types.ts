@@ -1,11 +1,16 @@
+// ─── Domain Types ────────────────────────────────────────────────────────────
+
 export interface Note {
   name: string;
   freq: number;
+  /** Staff position: 0 = middle E4, cada +1 sobe uma linha/espaço */
   sp: number;
   key: string;
 }
 
-export type MonsterPhase = number;
+// ─── Particle ────────────────────────────────────────────────────────────────
+
+export type ParticleType = 'circle' | 'star' | 'note' | 'ring' | 'ember';
 
 export interface ParticleOptions {
   ang?: number;
@@ -14,10 +19,64 @@ export interface ParticleOptions {
   decay?: number;
   r?: number;
   color?: string;
-  type?: 'circle' | 'star' | 'note' | 'ring' | 'ember';
+  type?: ParticleType;
   gravity?: number;
   glow?: boolean;
 }
+
+// ─── Drawable / Updatable contract ───────────────────────────────────────────
+
+export interface Drawable {
+  draw(ctx: CanvasRenderingContext2D): void;
+}
+
+export interface Updatable {
+  /** Retorna um evento opcional para o caller tratar */
+  update(): EntityEvent | null;
+}
+
+export type EntityEvent = 'shoot' | 'hit' | null;
+
+// ─── Alive-tracked entities ──────────────────────────────────────────────────
+
+export interface AliveEntity extends Drawable, Updatable {
+  alive: boolean;
+}
+
+export interface LiveEntity extends Drawable {
+  life: number;
+  update(): void;
+}
+
+// ─── Scene objects ────────────────────────────────────────────────────────────
+
+export interface Star {
+  x: number;
+  y: number;
+  r: number;
+  a: number;
+  t: number;
+  ts: number;
+}
+
+export interface Cloud {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  speed: number;
+  alpha: number;
+}
+
+export interface Torch {
+  x: number;
+  y: number;
+  flicker: number;
+  flickerSpeed: number;
+  size: number;
+}
+
+// ─── Core state ──────────────────────────────────────────────────────────────
 
 export interface ShakeState {
   x: number;
@@ -35,11 +94,12 @@ export interface GameState {
   sessionBest: number;
   running: boolean;
   waitAns: boolean;
-  monster: any | null; // Will type properly later
-  playerProjectiles: any[];
-  monsterProjectiles: any[];
-  particles: any[];
-  floats: any[];
+  /** Monstro atual na tela, ou null se não houver */
+  monster: import('./entities/Monster').Monster | null;
+  playerProjectiles: import('./entities/Projectiles').PlayerProjectile[];
+  monsterProjectiles: import('./entities/Projectiles').MonsterProjectile[];
+  particles: import('./entities/Particle').Particle[];
+  floats: import('./entities/FloatText').FloatText[];
   shake: ShakeState;
   spawnDelay: number;
   currentNote: Note | null;
@@ -49,7 +109,7 @@ export interface GameState {
   timerMax: number;
   timerLeft: number;
   timerRunning: boolean;
-  stars: any[];
-  clouds: any[];
-  torches: any[];
+  stars: Star[];
+  clouds: Cloud[];
+  torches: Torch[];
 }
