@@ -90,10 +90,14 @@ export interface GameState {
   lives: number;
   score: number;
   wave: number;
+  stage: number;
+  stageLevel: number;
+  levelIndex: number;
   phase: number;
   combo: number;
   streak: number;
   sessionBest: number;
+  champion: boolean;
   running: boolean;
   waitAns: boolean;
   /** Monstro atual na tela, ou null se não houver */
@@ -111,6 +115,17 @@ export interface GameState {
   timerMax: number;
   timerLeft: number;
   timerRunning: boolean;
+  levelElapsedMs: number;
+  totalElapsedMs: number;
+  unlockedNoteCount: number;
+  availableNoteIndices: number[];
+  difficulty: {
+    monsterSpeed: number;
+    projectileSpeed: number;
+    fireRate: number;
+    spawnDelay: number;
+  };
+  backgroundId: number;
   clef: ClefType;
   stars: Star[];
   clouds: Cloud[];

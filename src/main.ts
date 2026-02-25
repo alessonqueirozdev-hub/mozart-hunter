@@ -8,21 +8,72 @@ import { PlayerProjectile, MonsterProjectile } from './entities/Projectiles';
 import { FloatText } from './entities/FloatText';
 import { burst, noteExplosion, mozartHitEffect } from './entities/Particle';
 import {
-  updateHUD, showWaveAnnounce, triggerDanger,
-  triggerHitFlash, triggerPerfect, showStartOverlay, showGameOverOverlay,
+  updateHUD,
+  showWaveAnnounce,
+  triggerDanger,
+  triggerHitFlash,
+  triggerPerfect,
+  showStartOverlay,
+  showGameOverOverlay,
+  setStartOverlayResumeStatus,
 } from './ui/hud';
 import { createButtons, setButtonResult, setButtonActive, clearButtons } from './ui/buttons';
 import { initInputHandlers } from './input';
 import type { ClefType } from './types';
 import {
-  piano, errorSound, hitSound, comboSound,
-  gameOverSound, levelUpSound, whooshSound, monsterShootSound,
+  piano,
+  errorSound,
+  hitSound,
+  comboSound,
+  gameOverSound,
+  levelUpSound,
+  whooshSound,
+  monsterShootSound,
 } from './audio/engine';
-
-// ─── Canvas contexts ─────────────────────────────────────────────────────────
+import {
+  computeRampRatio,
+  getLevelConfig,
+  getUnlockedNoteIndices,
+  LAST_LEVEL_INDEX,
+  clampLevelIndex,
+} from './progression';
+import { browserProgressStore, formatElapsedSince } from './state/progressStore';
 
 const gc = (document.getElementById('gc') as HTMLCanvasElement).getContext('2d')!;
 const sc = (document.getElementById('sc') as HTMLCanvasElement).getContext('2d')!;
+
+const BG_THEMES = [
+  {
+    skyTint: 'rgba(40, 20, 70, 0.12)',
+    floorTint: 'rgba(70, 30, 80, 0.1)',
+    starShift: 0,
+  },
+  {
+    skyTint: 'rgba(20, 55, 90, 0.16)',
+    floorTint: 'rgba(20, 80, 110, 0.1)',
+    starShift: 25,
+  },
+  {
+    skyTint: 'rgba(80, 25, 25, 0.14)',
+    floorTint: 'rgba(120, 40, 20, 0.09)',
+    starShift: -35,
+  },
+  {
+    skyTint: 'rgba(45, 75, 30, 0.12)',
+    floorTint: 'rgba(35, 90, 45, 0.1)',
+    starShift: 50,
+  },
+] as const;
+
+const progressCache = browserProgressStore.load();
+const initialResumeLevelIndex = clampLevelIndex(progressCache?.levelIndex ?? 0);
+const initialResumeChampion = progressCache?.champion ?? false;
+const resumeMessage = progressCache
+  ? `Progresso carregado: estagio salvo ha ${formatElapsedSince(progressCache.savedAt)}.`
+  : 'Sem progresso salvo no navegador.';
+setStartOverlayResumeStatus(resumeMessage);
+
+let nextAutoSaveTs = 0;
 
 function resolveInitialClef(): ClefType {
   const raw = new URLSearchParams(window.location.search).get('clef')?.toLowerCase();
@@ -33,10 +84,49 @@ function resolveInitialClef(): ClefType {
   return 'treble';
 }
 
-// ─── Note management ─────────────────────────────────────────────────────────
+function saveProgressSnapshot(): void {
+  browserProgressStore.save({
+    levelIndex: G.levelIndex,
+    champion: G.champion,
+    savedAt: Date.now(),
+  });
+}
+
+function applyLevelState(levelIndex: number, announce = false): void {
+  const cfg = getLevelConfig(levelIndex);
+  G.levelIndex = levelIndex;
+  G.stage = cfg.stage;
+  G.stageLevel = cfg.stageLevel;
+  G.wave = cfg.stage;
+  G.phase = cfg.id - 1;
+  G.unlockedNoteCount = cfg.unlockedNotes;
+  G.availableNoteIndices = getUnlockedNoteIndices(cfg.unlockedNotes);
+  G.backgroundId = cfg.backgroundId;
+
+  G.difficulty.monsterSpeed = cfg.monsterSpeed;
+  G.difficulty.projectileSpeed = cfg.projectileSpeed;
+  G.difficulty.fireRate = cfg.fireRate;
+  G.difficulty.spawnDelay = cfg.spawnDelay;
+
+  G.timerMax = Math.max(260, 700 - cfg.id * 22);
+  G.timerLeft = G.timerMax;
+  G.levelElapsedMs = 0;
+
+  createButtons(G.availableNoteIndices, handleInput);
+
+  if (G.currentNote && !G.availableNoteIndices.includes(NOTES.indexOf(G.currentNote))) {
+    G.currentNote = null;
+  }
+
+  if (announce) {
+    showWaveAnnounce();
+    burst(GW / 2, GH * 0.23, '#ffffff', 34, { spd: 10, r: 6 });
+  }
+}
 
 function nextNote(): void {
-  G.currentNote = NOTES[Math.floor(Math.random() * NOTES.length)];
+  const noteIdx = G.availableNoteIndices[Math.floor(Math.random() * G.availableNoteIndices.length)] ?? 0;
+  G.currentNote = NOTES[noteIdx];
   G.staffAnim = 0;
   G.timerLeft = G.timerMax;
 
@@ -45,9 +135,8 @@ function nextNote(): void {
   display.className = 'note-name-display';
 }
 
-// ─── Input handling ──────────────────────────────────────────────────────────
-
 function handleInput(idx: number): void {
+  if (!G.availableNoteIndices.includes(idx)) return;
   if (!G.running || G.waitAns || !G.monster || G.monster.dying || !G.currentNote) return;
 
   const targetIdx = NOTES.indexOf(G.currentNote);
@@ -86,7 +175,6 @@ function handleCorrectAnswer(idx: number): void {
   setButtonResult(idx, 'correct');
   piano(NOTES[idx].freq);
 
-  // Disparo nasce na ponta da batuta de Mozart
   triggerMozartShoot();
   const tip = getMozartBatonTip();
   G.playerProjectiles.push(
@@ -121,13 +209,12 @@ function handleWrongAnswer(idx: number, targetIdx: number): void {
   }, 1200);
 }
 
-// ─── Timer timeout ────────────────────────────────────────────────────────────
-
 function handleTimerExpired(): void {
   G.timerRunning = false;
   G.waitAns = true;
 
-  setButtonResult(NOTES.indexOf(G.currentNote!), 'miss');
+  const noteIndex = G.currentNote ? NOTES.indexOf(G.currentNote) : -1;
+  if (noteIndex >= 0) setButtonResult(noteIndex, 'miss');
 
   const display = document.getElementById('note-name-display')!;
   display.innerHTML = `Tempo esgotado! A nota era: <span style="color:#ffcc00">${G.currentNote!.name}</span>`;
@@ -143,8 +230,6 @@ function handleTimerExpired(): void {
     G.timerRunning = true;
   }, 1200);
 }
-
-// ─── Screen shake ─────────────────────────────────────────────────────────────
 
 function applyShake(power: number): void {
   G.shake.pow = power;
@@ -169,32 +254,27 @@ function updateShake(): void {
   G.shake.y = (Math.random() - 0.5) * G.shake.pow;
 }
 
-// ─── Wave progression ────────────────────────────────────────────────────────
+function tryAdvanceLevel(): void {
+  if (G.champion) return;
+  if (G.levelElapsedMs < getLevelConfig(G.levelIndex).durationMs) return;
 
-const WAVE_SCORE_THRESHOLDS = [0, 800, 2500, 5000, 10000];
+  if (G.levelIndex >= LAST_LEVEL_INDEX) {
+    G.champion = true;
+    G.floats.push(new FloatText(GW / 2, GH * 0.18, 'CAMPEAO DA HARMONIA!', '#88ff66', 34));
+    showWaveAnnounce();
+    saveProgressSnapshot();
+    return;
+  }
 
-function checkWave(): void {
-  if (G.wave >= WAVE_SCORE_THRESHOLDS.length) return;
-  if (G.score <= WAVE_SCORE_THRESHOLDS[G.wave]) return;
-
-  G.wave++;
-  G.phase++;
   levelUpSound();
-  G.timerMax = Math.max(300, 700 - G.wave * 80);
-  showWaveAnnounce();
-
-  G.stars.forEach(s => (s.t += Math.PI));
-  burst(GW / 2, GH / 4, '#ffffff', 40, { spd: 12, r: 6 });
+  applyLevelState(G.levelIndex + 1, true);
+  G.spawnDelay = G.difficulty.spawnDelay;
+  saveProgressSnapshot();
 }
 
-// ─── Collision detection ──────────────────────────────────────────────────────
-
 function processHits(): void {
-  // ── Projéteis do jogador vs projéteis do monstro (NEUTRALIZAÇÃO) ──────────
-  // Raio grande (50px) para garantir colisão mesmo com projéteis rápidos.
-  // Usamos "sweep": checamos posição atual E posição do frame anterior
-  // para não perder colisões quando ambos se movem rápido.
-  const INTERCEPT_R2 = 50 * 50;
+  const interceptRadius = G.difficulty.projectileSpeed > 1.7 ? 56 : 50;
+  const INTERCEPT_R2 = interceptRadius * interceptRadius;
 
   for (let pi = G.playerProjectiles.length - 1; pi >= 0; pi--) {
     const pp = G.playerProjectiles[pi];
@@ -213,12 +293,11 @@ function processHits(): void {
         noteExplosion(mp.x, mp.y);
         G.score += 5;
         G.floats.push(new FloatText(mp.x, mp.y, '+5 INTERCEPTADO!', '#aaddff', 18));
-        break; // este pp já colidiu, passa para o próximo
+        break;
       }
     }
   }
 
-  // ── Projéteis do jogador vs monstro ───────────────────────────────────────
   if (G.monster && !G.monster.dying) {
     for (const p of G.playerProjectiles) {
       if (!p.alive) continue;
@@ -231,7 +310,7 @@ function processHits(): void {
         const killed = G.monster.takeDamage();
         if (killed) {
           whooshSound();
-          G.floats.push(new FloatText(G.monster.x, G.monster.y - 40, 'DESTRUÍDO!', '#ffaa00', 26));
+          G.floats.push(new FloatText(G.monster.x, G.monster.y - 40, 'DESTRUIDO!', '#ffaa00', 26));
           triggerDanger();
           applyShake(12);
         }
@@ -239,15 +318,12 @@ function processHits(): void {
     }
   }
 
-  // ── Monstro chegou até Mozart ─────────────────────────────────────────────
   const MONSTER_CONTACT_X = MOZART_X + 95;
   if (G.monster && !G.monster.dying && G.monster.x <= MONSTER_CONTACT_X) {
     loseLife();
     G.monster.die();
   }
 }
-
-// ─── Life loss / Game over ────────────────────────────────────────────────────
 
 function loseLife(): void {
   triggerHitFlash();
@@ -262,32 +338,30 @@ function loseLife(): void {
     G.running = false;
     gameOverSound();
     clearButtons();
+    saveProgressSnapshot();
     setTimeout(() => showGameOverOverlay(startGame), 1500);
   }
 }
 
-// ─── Entity update/draw loops ─────────────────────────────────────────────────
-
-/**
- * Atualiza e renderiza entidades com `alive`.
- * onHit é chamado quando update() retorna 'hit' — usado para mp atingir Mozart.
- * NOTA: projéteis já mortos (alive=false) são removidos SEM chamar update().
- */
 function updateDrawAlive(
   ctx: CanvasRenderingContext2D,
-  arr: Array<{ alive: boolean; update(): any; draw(ctx: CanvasRenderingContext2D): void }>,
+  arr: Array<{ alive: boolean; update(): unknown; draw(ctx: CanvasRenderingContext2D): void }>,
   onHit?: () => void,
 ): void {
   for (let i = arr.length - 1; i >= 0; i--) {
     const e = arr[i];
-    // Projétil já morto (neutralizado por processHits) → só remove, não processa
-    if (!e.alive) { arr.splice(i, 1); continue; }
+    if (!e.alive) {
+      arr.splice(i, 1);
+      continue;
+    }
 
     const result = e.update();
-    // Projétil atingiu Mozart via detecção interna do mp.update()
     if (result === 'hit' && onHit) onHit();
 
-    if (!e.alive) { arr.splice(i, 1); continue; }
+    if (!e.alive) {
+      arr.splice(i, 1);
+      continue;
+    }
     e.draw(ctx);
   }
 }
@@ -299,12 +373,38 @@ function updateDrawLive(
   for (let i = arr.length - 1; i >= 0; i--) {
     const e = arr[i];
     e.update();
-    if (e.life <= 0) { arr.splice(i, 1); continue; }
+    if (e.life <= 0) {
+      arr.splice(i, 1);
+      continue;
+    }
     e.draw(ctx);
   }
 }
 
-// ─── Game loop ────────────────────────────────────────────────────────────────
+function drawStageAtmosphere(ctx: CanvasRenderingContext2D): void {
+  const theme = BG_THEMES[G.backgroundId % BG_THEMES.length];
+
+  ctx.save();
+  ctx.fillStyle = theme.skyTint;
+  ctx.fillRect(0, 0, GW, GH * 0.7);
+
+  const floorGrad = ctx.createLinearGradient(0, GH * 0.55, 0, GH);
+  floorGrad.addColorStop(0, 'transparent');
+  floorGrad.addColorStop(1, theme.floorTint);
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, GH * 0.45, GW, GH * 0.55);
+  ctx.restore();
+
+  ctx.save();
+  G.stars.forEach(s => {
+    ctx.globalAlpha = (Math.sin(s.t) * 0.5 + 0.5) * s.a;
+    ctx.fillStyle = `hsl(${200 + theme.starShift + Math.sin(s.t) * 40},80%,85%)`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
 
 let lastTs = 0;
 
@@ -323,7 +423,6 @@ function loop(ts: number): void {
 
   updateShake();
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   gc.clearRect(0, 0, GW, GH);
   gc.save();
   gc.translate(G.shake.x, G.shake.y);
@@ -339,33 +438,36 @@ function loop(ts: number): void {
 
   gc.drawImage(bgFloor, 0, 0);
 
-  // Estrelas cintilantes
-  gc.save();
-  G.stars.forEach(s => {
-    gc.globalAlpha = (Math.sin(s.t) * 0.5 + 0.5) * s.a;
-    gc.fillStyle = `hsl(${200 + Math.sin(s.t) * 40},80%,85%)`;
-    gc.beginPath(); gc.arc(s.x, s.y, s.r, 0, Math.PI * 2); gc.fill();
-  });
-  gc.restore();
+  drawStageAtmosphere(gc);
 
-  // Nuvens
   G.clouds.forEach(c => {
     gc.fillStyle = `rgba(180,200,240,${c.alpha})`;
-    gc.beginPath(); gc.ellipse(c.x, c.y, c.w, c.h, 0, 0, Math.PI * 2); gc.fill();
+    gc.beginPath();
+    gc.ellipse(c.x, c.y, c.w, c.h, 0, 0, Math.PI * 2);
+    gc.fill();
     gc.fillStyle = `rgba(220,230,255,${c.alpha * 0.3})`;
-    gc.beginPath(); gc.ellipse(c.x + c.w * 0.1, c.y - c.h * 0.2, c.w * 0.8, c.h * 0.6, 0, 0, Math.PI * 2); gc.fill();
+    gc.beginPath();
+    gc.ellipse(c.x + c.w * 0.1, c.y - c.h * 0.2, c.w * 0.8, c.h * 0.6, 0, 0, Math.PI * 2);
+    gc.fill();
   });
 
   drawTorches(gc, G.torches);
 
-  // ── Lógica de jogo ──────────────────────────────────────────────────────────
   if (G.running) {
-    G.staffAnim = G.staffAnim > 0
-      ? G.staffAnim * 0.85
-      : Math.min(G.staffAnim + 0.05, 1);
+    G.levelElapsedMs += dt;
+    G.totalElapsedMs += dt;
+
+    const cfg = getLevelConfig(G.levelIndex);
+    const ramp = computeRampRatio(G.levelElapsedMs, cfg.durationMs);
+    G.difficulty.monsterSpeed = cfg.monsterSpeed * (1 + ramp * 0.85);
+    G.difficulty.projectileSpeed = cfg.projectileSpeed * (1 + ramp);
+    G.difficulty.fireRate = cfg.fireRate * (1 + ramp * 0.9);
+    G.difficulty.spawnDelay = Math.max(24, cfg.spawnDelay * (1 - ramp * 0.35));
+
+    G.staffAnim = G.staffAnim > 0 ? G.staffAnim * 0.85 : Math.min(G.staffAnim + 0.05, 1);
 
     if (G.timerRunning) {
-      G.timerLeft -= 0.8;
+      G.timerLeft -= 0.8 * (1 + ramp * 0.35);
       if (G.timerLeft <= 0) handleTimerExpired();
     }
 
@@ -384,7 +486,9 @@ function loop(ts: number): void {
         monsterShootSound();
         const targetTip = getMozartBatonTip();
         const laneY = targetTip.y;
-        const numProj = 1 + Math.min(Math.floor(G.phase / 2), 2);
+        const numProj = Math.min(3, 1 + Math.floor(G.levelIndex / 4));
+        const shotDelay = Math.max(70, Math.floor(200 / Math.max(1, G.difficulty.fireRate)));
+
         for (let i = 0; i < numProj; i++) {
           setTimeout(() => {
             if (G.monster && !G.monster.dying) {
@@ -393,41 +497,41 @@ function loop(ts: number): void {
                 new MonsterProjectile(origin.x, origin.y, G.monster.type, laneY),
               );
             }
-          }, i * 200);
+          }, i * shotDelay);
         }
       }
 
       if (G.monster.dying && G.monster.dyingT >= G.monster.dyingDur) {
         G.monster = null;
-        G.spawnDelay = 80;
-        checkWave();
+        G.spawnDelay = G.difficulty.spawnDelay;
+
         if (G.timerRunning) G.timerLeft = Math.min(G.timerLeft + 100, G.timerMax);
+        tryAdvanceLevel();
       }
     }
 
-    // processHits ANTES dos updates — marca projéteis como mortos
-    // antes que updateDrawAlive os processe
     processHits();
 
     updateDrawAlive(gc, G.playerProjectiles);
     if (G.monster) G.monster.draw(gc);
-    // onHit só é chamado se mp.update() retorna 'hit' (mp chegou a Mozart sem ser interceptado)
     updateDrawAlive(gc, G.monsterProjectiles, loseLife);
     updateDrawLive(gc, G.particles);
     updateDrawLive(gc, G.floats);
+
+    if (ts >= nextAutoSaveTs) {
+      saveProgressSnapshot();
+      nextAutoSaveTs = ts + 9000;
+    }
 
     updateHUD();
     drawStaff(sc, 960, G.staffAnim, G.currentNote, G.clef);
   }
 
-  // Mozart sempre visível
   drawMozart(gc, MOZART_X, MOZART_Y, G.monster?.dangerRatio ?? 0, G.monster?.hitFlash ?? 0, G.frame);
 
   gc.restore();
   requestAnimationFrame(loop);
 }
-
-// ─── Start / Restart ─────────────────────────────────────────────────────────
 
 function startGame(): void {
   if (G.score > G.sessionBest) {
@@ -440,17 +544,24 @@ function startGame(): void {
   G.running = true;
   G.waitAns = false;
   G.timerRunning = false;
-  G.spawnDelay = 60;
+
+  const latestProgress = browserProgressStore.load();
+  const resumeLevel = clampLevelIndex(latestProgress?.levelIndex ?? initialResumeLevelIndex);
+  G.champion = latestProgress?.champion ?? initialResumeChampion;
+
+  applyLevelState(resumeLevel, true);
+  G.spawnDelay = G.difficulty.spawnDelay;
 
   clearButtons();
   nextNote();
-  showWaveAnnounce();
   updateHUD();
 }
 
-// ─── Bootstrap ───────────────────────────────────────────────────────────────
+window.addEventListener('beforeunload', () => {
+  saveProgressSnapshot();
+});
 
-createButtons(handleInput);
+createButtons([0, 1], handleInput);
 initInputHandlers(handleInput);
 updateHUD();
 showStartOverlay(startGame);

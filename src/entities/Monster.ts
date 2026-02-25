@@ -2,6 +2,7 @@ import { hitSpark } from './Particle';
 import { GW, MOZART_Y, PROJECTILE_LANE_Y } from '../constants';
 import type { EntityEvent } from '../types';
 import { getMonsterSpriteObjectUrls } from '../graphics/monsterJsSvg';
+import { G } from '../state/gameState';
 
 type SpriteCache = {
   full: HTMLCanvasElement;
@@ -104,11 +105,11 @@ export class Monster {
   private _animFrame: number = 0;
 
   constructor(phase: number) {
-    this.x = GW + 120;
+    this.x = GW - 30;
     this.y = MOZART_Y;
     this.type = Math.floor(Math.random() * 4);
 
-    const baseSpeeds = [0.5, 0.8, 1.2, 1.6, 2.1];
+    const baseSpeeds = [0.62, 0.92, 1.32, 1.75, 2.25];
     this.baseSpd = baseSpeeds[Math.min(phase, 4)] * (0.75 + Math.random() * 0.35);
 
     this.alive = true;
@@ -141,12 +142,12 @@ export class Monster {
     this._animFrame++;
     this.bobT += 0.04;
     this.anger = this.dangerRatio;
-    this.x -= this.spd;
-    this.onScreenFrames++;
+    this.x -= this.spd * G.difficulty.monsterSpeed;
+    if (this.x <= GW - 48) this.onScreenFrames++;
     if (this.shootAnim > 0) this.shootAnim--;
 
     if (this.onScreenFrames > 60) {
-      this.shootTimer++;
+      this.shootTimer += G.difficulty.fireRate;
       if (this.shootTimer >= this.shootInterval) {
         this.shootTimer = 0;
         this.shootAnim = 16;

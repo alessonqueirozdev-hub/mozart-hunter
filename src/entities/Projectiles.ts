@@ -6,6 +6,7 @@ export class PlayerProjectile {
   x: number;
   y: number;
   vx: number;
+  baseVx: number;
   vy: number;
   alive: boolean;
   trail: { x: number; y: number }[];
@@ -27,7 +28,8 @@ export class PlayerProjectile {
     this.x = originX ?? 175;
     this.y = originY ?? 185;
 
-    this.vx = 18;
+    this.baseVx = 18;
+    this.vx = this.baseVx;
     this.vy = 0;
 
     this.alive = true;
@@ -42,6 +44,7 @@ export class PlayerProjectile {
     this.trail.push({ x: this.x, y: this.y });
     if (this.trail.length > 24) this.trail.shift();
 
+    this.vx = this.baseVx * G.difficulty.projectileSpeed;
     this.x += this.vx;
     this.y += this.vy;
 
@@ -112,6 +115,7 @@ export class MonsterProjectile {
   x: number;
   y: number;
   vx: number;
+  baseVx: number;
   vy: number;
   targetX: number;
   targetY: number;
@@ -132,7 +136,8 @@ export class MonsterProjectile {
     this.targetY = laneY;
 
     const spd = 7 + type * 0.5;
-    this.vx = -spd;
+    this.baseVx = -spd;
+    this.vx = this.baseVx;
     this.vy = 0;
 
     this.alive = true;
@@ -160,6 +165,7 @@ export class MonsterProjectile {
     this.trail.push({ x: this.x, y: this.y });
     if (this.trail.length > 18) this.trail.shift();
 
+    this.vx = this.baseVx * G.difficulty.projectileSpeed;
     this.x += this.vx;
     this.y += this.vy;
 
