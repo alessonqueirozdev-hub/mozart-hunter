@@ -2,7 +2,7 @@ import { STAFF_TOP, LS } from '../constants';
 import type { ClefType, Note } from '../types';
 import { getClefGlyph, MUSIC_FONT_FAMILY, SMuFLGlyphs } from './smuflGlyphs';
 
-const STAFF_HEIGHT = 148;
+const STAFF_HEIGHT = 168;
 const STAFF_LEFT = 20;
 const STAFF_RIGHT_PAD = 20;
 const STAFF_SPACE = LS;

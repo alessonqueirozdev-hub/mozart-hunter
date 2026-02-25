@@ -38,7 +38,7 @@ export const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 
 // Canvas Layout Constants
 export const LS = 16;
-export const STAFF_TOP = 28;
+export const STAFF_TOP = 44;
 export const STAFF_X_NOTE = 240;
 export const CLEF_X = 22;
 export const CLEF_Y_BL = STAFF_TOP + 4 * LS + 56;
